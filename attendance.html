@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Event Attendance</title>
+<style>
+  :root{--bg:#f6f7f9;--card:#fff;--ink:#14213d;--mute:#5b6577;--line:#d8dce4;--accent:#1d4ed8;--ok:#15803d;--warn:#b45309;--bad:#b91c1c}
+  @media (prefers-color-scheme:dark){:root{--bg:#0e1420;--card:#172033;--ink:#e8ecf5;--mute:#9aa6bd;--line:#2c3850;--accent:#6b9bff;--ok:#4ade80;--warn:#fbbf24;--bad:#f87171}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh;display:grid;place-items:start center;padding:20px 14px}
+  main{width:100%;max-width:440px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:24px 20px}
+  h1{font-size:1.35rem;margin:0 0 4px}
+  .sub{color:var(--mute);margin:0 0 20px;font-size:.92rem}
+  label{display:block;font-weight:600;font-size:.9rem;margin:14px 0 6px}
+  input{width:100%;padding:12px;font:inherit;color:var(--ink);background:transparent;border:1px solid var(--line);border-radius:8px}
+  input:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
+  button{width:100%;margin-top:22px;padding:13px;font:inherit;font-weight:600;color:#fff;background:var(--accent);border:0;border-radius:8px;cursor:pointer}
+  button:disabled{opacity:.6}
+  .err{color:var(--bad);font-size:.85rem;min-height:1.2em;margin-top:10px}
+  .status{border-left:4px solid var(--mute);padding:4px 0 4px 14px;margin:6px 0}
+  .status h2{margin:0 0 4px;font-size:1.1rem}
+  .status p{margin:4px 0;color:var(--mute);font-size:.92rem}
+  .status.sent{border-color:var(--ok)} .status.sent h2{color:var(--ok)}
+  .status.pending{border-color:var(--warn)} .status.pending h2{color:var(--warn)}
+  .status.bad{border-color:var(--bad)} .status.bad h2{color:var(--bad)}
+  .hidden{display:none}
+  dl{margin:16px 0 0;font-size:.9rem} dt{color:var(--mute)} dd{margin:0 0 8px;font-weight:600}
+</style>
+</head>
+<body>
+<main>
+  <h1 id="evName"></h1>
+  <p class="sub">Attendance. One entry per device. You cannot submit twice.</p>
+
+  <form id="form" class="hidden" novalidate>
+    <label for="name">Full name</label>
+    <input id="name" autocomplete="name" required>
+    <label for="enr">Enrollment number</label>
+    <input id="enr" autocapitalize="characters" autocomplete="off" required>
+    <label for="branch">Branch / year</label>
+    <input id="branch" autocomplete="off" placeholder="e.g. AIDS 4th year" required>
+    <div class="err" id="err" role="alert"></div>
+    <button type="submit" id="btn">Mark my attendance</button>
+  </form>
+
+  <section id="state" class="hidden" aria-live="polite">
+    <div class="status" id="box"><h2 id="stH"></h2><p id="stP"></p></div>
+    <dl id="recap"></dl>
+  </section>
+</main>
+
+<script>
+/* ====== CONFIG: edit these 3 lines ====== */
+const SCRIPT_URL = "PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
+const EVENT_ID   = "event-2026-10-06";      // unique per event
+const EVENT_NAME = "Event Attendance";
+/* ======================================= */
+
+const KEY = "att_rec_" + EVENT_ID, DEV = "att_device", CK = "att_done_" + EVENT_ID;
+const token = new URLSearchParams(location.search).get("t") || "";
+const $ = id => document.getElementById(id);
+$("evName").textContent = EVENT_NAME;
+document.title = EVENT_NAME;
+
+/* ---- storage helpers (every access guarded) ---- */
+const ls = {
+  get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
+  set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+};
+const setCookie = () => { document.cookie = CK + "=1; max-age=172800; path=/; SameSite=Lax"; };
+const hasCookie = () => document.cookie.split("; ").some(c => c.startsWith(CK + "="));
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+
+function deviceId(){
+  let d = ls.get(DEV);
+  if(!d){ d = uid(); ls.set(DEV, d); }
+  return d;
+}
+function fingerprint(){
+  const s = [navigator.userAgent, screen.width + "x" + screen.height, screen.colorDepth, navigator.language,
+    Intl.DateTimeFormat().resolvedOptions().timeZone, navigator.hardwareConcurrency || "", navigator.maxTouchPoints || 0].join("|");
+  let h = 5381; for(const c of s) h = ((h << 5) + h + c.charCodeAt(0)) >>> 0;
+  return h.toString(16);
+}
+const load = () => { try{ return JSON.parse(ls.get(KEY) || "null"); }catch(e){ return null; } };
+const save = r => ls.set(KEY, JSON.stringify(r));
+
+/* ---- screens ---- */
+function show(kind, h, p, rec){
+  $("form").classList.add("hidden");
+  $("state").classList.remove("hidden");
+  $("box").className = "status " + kind;
+  $("stH").textContent = h;
+  $("stP").textContent = p;
+  const r = $("recap"); r.textContent = "";
+  if(rec){
+    [["Name", rec.name], ["Enrollment", rec.enrollment], ["Filled at", new Date(rec.filledAt).toLocaleTimeString()]].forEach(([k,v]) => {
+      const dt = document.createElement("dt"), dd = document.createElement("dd");
+      dt.textContent = k; dd.textContent = v; r.append(dt, dd);
+    });
+  }
+}
+function render(){
+  const rec = load();
+  if(rec){
+    if(rec.status === "sent") show("sent", "Attendance recorded", "You are marked present. Nothing more to do.", rec);
+    else if(rec.status === "rejected") show("bad", "Attendance not accepted", rec.reason || "This entry was rejected. Please meet the organizer.", rec);
+    else show("pending", "Saved on this device", "No internet right now. Keep this page open or reopen the link later. It will send automatically when the network returns. Do not submit again.", rec);
+    return;
+  }
+  if(hasCookie()){
+    show("bad", "Already submitted from this device", "Attendance was already filled from this browser. Ask the organizer if this is a mistake.");
+    return;
+  }
+  $("state").classList.add("hidden");
+  $("form").classList.remove("hidden");
+}
+
+/* ---- sending with retry ---- */
+let sending = false;
+async function trySend(){
+  const rec = load();
+  if(!rec || rec.status !== "pending" || sending || !navigator.onLine) return;
+  sending = true;
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 12000);
+  try{
+    const res = await fetch(SCRIPT_URL, {
+      method: "POST", redirect: "follow", signal: ctl.signal,
+      headers: {"Content-Type": "text/plain;charset=utf-8"},   // avoids CORS preflight
+      body: JSON.stringify({token, event: EVENT_ID, ...rec.payload})
+    });
+    const out = await res.json();
+    if(out.status === "ok"){ rec.status = "sent"; save(rec); render(); }
+    else if(out.status === "rejected"){ rec.status = "rejected"; rec.reason = out.reason; save(rec); render(); }
+  }catch(e){ /* offline or timeout: stay pending, retry later */ }
+  finally{ clearTimeout(t); sending = false; }
+}
+
+/* ---- submit: lock FIRST, send second ---- */
+$("form").addEventListener("submit", e => {
+  e.preventDefault();
+  const name = $("name").value.trim(), enr = $("enr").value.trim().toUpperCase(), br = $("branch").value.trim();
+  if(name.length < 3 || enr.length < 4 || br.length < 2){ $("err").textContent = "Fill all three fields correctly."; return; }
+  if(load() || hasCookie()) { render(); return; }
+  const filledAt = new Date().toISOString();
+  const rec = {status: "pending", name, enrollment: enr, filledAt,
+    payload: {sid: uid(), deviceId: deviceId(), fp: fingerprint(), name, enrollment: enr, branch: br, filledAt}};
+  save(rec); setCookie();          // device is locked the moment the form is filled
+  render(); trySend();
+});
+
+window.addEventListener("online", trySend);
+document.addEventListener("visibilitychange", () => { if(!document.hidden) trySend(); });
+setInterval(trySend, 8000);
+render(); trySend();
+</script>
+</body>
+</html>
