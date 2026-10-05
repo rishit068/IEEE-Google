@@ -512,30 +512,14 @@
         </div>
 
         <div class="f"><label for="enroll">Enrollment number <i>*</i></label>
-          <input id="enroll" name="enroll" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="11"
-            autocomplete="off" enterkeyhint="next" placeholder="11 digits">
+          <input id="enroll" name="enroll" type="text" inputmode="numeric" pattern="[0-9]*"
+            autocomplete="off" enterkeyhint="next" placeholder="Enter your enrollment number">
           <div class="err"></div>
         </div>
 
         <div class="f"><label for="gr">GR number <i>*</i></label>
           <input id="gr" name="gr" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off"
-            enterkeyhint="next" placeholder="6 digits">
-          <div class="err"></div>
-        </div>
-
-        <div class="f"><label for="email">Email <i>*</i></label>
-          <input id="email" name="email" type="email" inputmode="email" autocomplete="email" autocapitalize="none"
-            enterkeyhint="done" placeholder="you@example.com">
-          <div class="err"></div>
-        </div>
-
-        <div class="f"><span class="lbl" id="yl">Year <i>*</i></span>
-          <div class="years" role="radiogroup" aria-labelledby="yl">
-            <label><input type="radio" name="year" value="1st Year"><span>1st<small>Year</small></span></label>
-            <label><input type="radio" name="year" value="2nd Year"><span>2nd<small>Year</small></span></label>
-            <label><input type="radio" name="year" value="3rd Year"><span>3rd<small>Year</small></span></label>
-            <label><input type="radio" name="year" value="4th Year"><span>4th<small>Year</small></span></label>
-          </div>
+            enterkeyhint="done" placeholder="6 digits">
           <div class="err"></div>
         </div>
 
@@ -569,10 +553,8 @@
 
     const rules = {
       name: v => v.trim().length >= 3 || "Enter your full name.",
-      enroll: v => /^\d{11}$/.test(v.trim()) || "Enrollment number must be exactly 11 digits.",
-      gr: v => /^\d{6}$/.test(v.trim()) || "GR number must be exactly 6 digits.",
-      email: v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()) || "Enter a valid email address.",
-      year: v => !!v || "Select your year."
+      enroll: v => /^\d+$/.test(v.trim()) || "Enter your enrollment number.",
+      gr: v => /^\d{6}$/.test(v.trim()) || "GR number must be exactly 6 digits."
     };
 
     function val(n) {
